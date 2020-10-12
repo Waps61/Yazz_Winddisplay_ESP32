@@ -5,13 +5,15 @@
   Contact:  waps61 @gmail.com
   URL:      https://www.hackster.io/waps61
   TARGET:   ESP32
-  VERSION:  0.01
-  Date:     02-10-2020
+  VERSION:  1.0
+  Date:     11-10-2020
   Last
-  Update:   02-10-2020 V0.01
+  Update:   11-10-2020
+            Tested on board and ok. This V1.0 as the master release
+            02-10-2020 V0.01
             Port from Atmega328 to ESP from version 1.13
             
-  Achieved: 03-10-2020 Runnable version on ESP32 with Nextion HMI         
+  Achieved: 11-10-2020 Succesful SAT  with Runnable version on ESP32 with Nextion HMI         
   Purpose:  Build an NMEA0183 wind display to replace the old Robertsen wind displays
             supporting following types of tasks:
             - Reading NMEA0183 v2.x data without,
@@ -70,12 +72,13 @@
   Do NOT use this compass in situations involving safety to life
   such as navigation at sea.  
         
-  TO DO:    Implement 2-way communication so that incomming NMEA data can be relayed
+  TO DO:    - Connect HMI to 5V from the Buck converter i.s.o. 3.3V pin on ESP32
+            -Implement 2-way communication so that incomming NMEA data can be relayed
             to other devices. An NMEA0183 network is typically a daisy chained network
 
   LIMITATIONS: 
-            No relay of NMEA0183 data possible currently. So display needs to be
-            implemented as the last node in the daisy chain.
+            As per the Arduino Nano V1.13;No relay of NMEA0183 data possible currently. 
+            So display needs to be implemented as the last node in the daisy chain.
  
   Credit:   
 */
@@ -93,7 +96,7 @@
 
 //For testing  and development purposes only outcomment to disable
 //#define WRITE_ENABLED 1
-#define NEXTION_ATTACHED 1
+#define NEXTION_ATTACHED 1 //out comment if no display available
 
 #define NMEA_BAUD 4800      //baudrate for NMEA communciation
 #define NMEA_BUFFER_SIZE 83 // According NEA0183 specs the max char is 82 + '\0'
@@ -190,6 +193,7 @@ boolean isNumeric( char *value)
    HMI values 0 - 180 = Startboard
    HMI values 181 - 360 = Port
  */
+
 /*** Converts and adjusts the incomming values to usable values for the HMI display 
  * and shifts these integer(!) values into the 32-bit register and sends the
  * 32-bit register to the Nextion HMI in timed intervals of 50ms.
