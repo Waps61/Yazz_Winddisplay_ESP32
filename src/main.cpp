@@ -5,10 +5,13 @@
   Contact:  waps61 @gmail.com
   URL:      https://www.hackster.io/waps61
   TARGET:   ESP32
-  VERSION:  1.0
-  Date:     11-10-2020
+  VERSION:  1.1
+  Date:     21-10-2020
   Last
-  Update:   11-10-2020
+  Update:   21-10-2020
+            Implemented a serial protocol to overcome the limitations of the
+            32 bit register holding the paramaters to display wih a string based data set
+            11-10-2020
             Tested on board and ok. This V1.0 as the master release
             02-10-2020 V0.01
             Port from Atmega328 to ESP from version 1.13
@@ -96,6 +99,7 @@
 
 //For testing  and development purposes only outcomment to disable
 //#define WRITE_ENABLED 1
+#define VERSION "1.1"
 #define NEXTION_ATTACHED 1 //out comment if no display available
 
 #define NMEA_BAUD 4800      //baudrate for NMEA communciation
@@ -105,6 +109,7 @@
 #define NEXTION_RX (int8_t) 16
 #define NEXTION_TX (int8_t) 17
 
+
 #define RED 63488  //Nextion color
 #define GREEN 2016 //Nextion color
 
@@ -113,16 +118,8 @@
 #define WINDDISPLAY_STATUS_VALUE "status.val"
 #define FIELD_BUFFER 15 //nr of char used for displaying info on Nextion
 
-enum displayItems
-{
-  AWA,
-  AWS,
-  COG,
-  SOG,
-  GAUGE,
-  WDIR,
-  WDSTATUS
-};
+#define FTM 0.3048  //conversion from feet to meter
+
 
 //*** Global scope variable declaration goes here
 NexPicture dispStatus = NexPicture(0, 16, WINDDISPLAY_STATUS);
@@ -133,9 +130,10 @@ char _AWA[FIELD_BUFFER] = {0};
 char _COG[FIELD_BUFFER] = {0};
 char _SOG[FIELD_BUFFER] = {0};
 char _AWS[FIELD_BUFFER] = {0};
+char _BAT[FIELD_BUFFER] = {0};
+char _DPT[FIELD_BUFFER] = {0};
 char _DIR[FIELD_BUFFER] = {0};
-long _BITVAL = 0L; //32-bit register to communicate with Nextion
-long oldVal = 0L;  // holds previos _BITVALUE to check if we need to send
+char oldVal[255] = {0};  // holds previos _BITVALUE to check if we need to send
 
 enum nextionStatus
 {
@@ -195,54 +193,64 @@ boolean isNumeric( char *value)
  */
 
 /*** Converts and adjusts the incomming values to usable values for the HMI display 
- * and shifts these integer(!) values into the 32-bit register and sends the
- * 32-bit register to the Nextion HMI in timed intervals of 50ms.
+ * and concatenates thes values in one string so it can be send in one command to the 
+ * Nextion HMI in timed intervals of 50ms.
  * This is due the fact that a timer in the HMI checks on new data and refreshes the 
  * display. So no need to send more data than you can chew!
  * A refresh of 20x per second is more then sufficient.
+ * The string is formatted like:
+ * <Sentence ID1>=<Value1>#....<Sentence IDn>=<Value_n>#
+ * Sentence ID = 3 chars i.e. SOG, COG etc
+ * Value can be an integer or float with 1 decimal and max 5 char long incl. delimter
+ * i.e. SOG=6.4#COG=213.2#BAT=12.5#AWA=37#AWS=15.7#
+ * The order is not applicable, so can be random
  */
 void displayData()
 {
-  long intValue = 0L;
+  char _BITVAL[255] = {0};
 
-  // set most significant value; if cog is a number else previous value
+  // if cog is a number 
   if( isNumeric(_COG)){
-    intValue = atoi(_COG);
-    // values in degrees can not be bigger than 360
-    intValue = (long)(intValue % 360);
-  } else intValue = (oldVal>>21) & 511; // mask 9 bit value
-  _BITVAL = (long)intValue; // put value cog in register
-  _BITVAL = _BITVAL << 9;   // and shift left 9 bits making room for the next 9 bits
+    strcat(_BITVAL,"COG=");
+    strcat(_BITVAL,_COG);
+    strcat(_BITVAL,"#");
+    
+  } 
    
   //set awa if is a number
   if( isNumeric(_AWA)){
-    intValue = atoi(_AWA);
-    if (intValue < -180)
-      intValue *= -1; // the register has no place for signed integers
-    else
-      intValue += 360;
-    intValue = (long)(intValue % 360); // convert values <0; i.e. -179 -> 181
-  } else intValue = (oldVal>>12) & 511;
-  _BITVAL ^= (long)intValue;         // XOR add value to register
-  _BITVAL = _BITVAL << 6;            // and shift left 6 bits to make room for sog
+    strcat(_BITVAL,"AWA=");
+    strcat(_BITVAL,_AWA);
+    strcat(_BITVAL,"#");
+  } 
+  
 
   //set sog if is a number
   if( isNumeric(_SOG)){
-    intValue = atoi(_SOG);
-    if (intValue < 0 || intValue > 63) // test for out of range values
-      intValue = (oldVal >> 6) & 63;   //0L; // use previos if true to prevent jumping values
-  } else intValue = (oldVal >> 6) & 63; 
-  _BITVAL ^= (long)intValue;         // XOR the value into register
-  _BITVAL = _BITVAL << 6;            // ans shift left 6 bits for final value of aws
+    strcat(_BITVAL,"SOG=");
+    strcat(_BITVAL,_SOG);
+    strcat(_BITVAL,"#");
+  } 
 
   // set aws is is a number
   if(isNumeric(_AWS)){
-    intValue = atoi(_AWS);
-    if (intValue < 0 || intValue > 63) // test for invalid values
-      intValue = oldVal & 63;          //0L; // use previos if true to prevent jumping values
-  } else intValue = oldVal & 63; 
-  _BITVAL ^= (long)intValue;
+    strcat(_BITVAL,"AWS=");
+    strcat(_BITVAL,_AWS);
+    strcat(_BITVAL,"#");
+  } 
   
+  // set BATT is is a number
+  if(isNumeric(_BAT)){
+    strcat(_BITVAL,"BAT=");
+    strcat(_BITVAL,_BAT);
+    strcat(_BITVAL,"#");
+  } 
+  // set dpt is is a number
+  if(isNumeric(_DPT)){
+    strcat(_BITVAL,"DPT=");
+    strcat(_BITVAL,_DPT);
+    strcat(_BITVAL,"#");
+  } 
   //*** Nextion display timer max speed is 50ms
   // so no need to send faster than 50ms otherwise
   // flooding the serialbuffer
@@ -250,20 +258,22 @@ void displayData()
   {
     tmr1 = millis();
     #ifdef NEXTION_ATTACHED
-    if (oldVal != _BITVAL)
+    if ( strcmp(oldVal,_BITVAL) != 0 )
     {
-      oldVal = _BITVAL;
+      strcpy( oldVal, _BITVAL);
       sendCommand("code_c");     // clear the previous databuffer if present
       recvRetCommandFinished(5); // always wait for a reply from the HMI!
 
-      nexSerial.print("sys2=");
-      nexSerial.print((long)_BITVAL);
+      nexSerial.print("winddisplay.nmea.txt=");
+      nexSerial.print(_BITVAL);
       nexSerial.write(0xFF);
       nexSerial.write(0xFF);
       nexSerial.write(0xFF);
       recvRetCommandFinished(5);
     }
+    
     #endif
+    Serial.println(_BITVAL);
     newData = false;
   }
 }
@@ -275,6 +285,7 @@ void displayData()
 */
 void hmiCommtest(uint16_t t0)
 {
+  /*
   int dir = 0;
   for (int i = t0; i < 360; i += 90)
   {
@@ -292,8 +303,8 @@ void hmiCommtest(uint16_t t0)
     delay(250);
   }
 
-  
-  dispStatus.setPic(HMI_READY);
+  */
+  //dispStatus.setPic(HMI_READY);
 }
 #endif
 
@@ -338,11 +349,9 @@ void recvNMEAData()
   char startMarker = '$';
   char endMarker = '\n';
   char rc;
-  
   while (nmeaSerial.available() > 0 && newData == false)
   {
     rc = nmeaSerial.read();
-
     if (recvInProgress == true)
     {
       if (rc != endMarker)
@@ -394,6 +403,8 @@ void processNMEAData()
 
     if (sentence.indexOf("MWV", 0) > 0 ||
         sentence.indexOf("RMC",0) > 0 ||
+        sentence.indexOf("DBK",0) > 0 ||
+        sentence.indexOf("TOB",0) > 0 ||
         sentence.indexOf("VWR",0) > 0)
     {
       field = 0; //ignore sentence tag
@@ -442,6 +453,21 @@ void processNMEAData()
             memcpy(_COG, cvalue, FIELD_BUFFER - 1);
           }
         }
+        if(sentence.indexOf("DBK") > 0){
+          if(field==1){
+            memcpy(_DPT,cvalue,FIELD_BUFFER -1);
+          }
+          if( field==2 && cvalue[0]=='f'){
+            double dpt= atof(_DPT);
+            dpt *= FTM;
+            sprintf(_DPT,"%.1f",dpt);
+          }
+        }
+        if(sentence.indexOf("TOB") > 0){
+          if(field==1){
+            memcpy(_BAT,cvalue,FIELD_BUFFER-1);
+          }
+        }
         ci = li;
         li = sentence.indexOf(',', ci + 1);
         if (li < 0 || li > numChars)
@@ -467,7 +493,7 @@ void relayData()
 
 void setup()
 {
-  
+//Serial.begin(115200);
 //Initialize the Nextion Display; the display will run a "selftest" and takes
 // about 15 seconds to finish
 #ifdef WRITE_ENABLED
@@ -476,7 +502,7 @@ void setup()
   
 #ifdef NEXTION_ATTACHED
   nexInit();
-
+  //sendCommand("splashscreen.version.txt="+VERSION);
   delay(1500);
   sendCommand("page 1");
   recvRetCommandFinished(100);
@@ -495,6 +521,8 @@ void setup()
   memcpy(_COG, "0", 2);
   memcpy(_SOG, "0", 2);
   memcpy(_AWS, "0", 2);
+  memcpy(_DPT, "0",2);
+  memcpy(_BAT,"0",2);
   displayData();
 #endif
   //pinMode(10, INPUT_PULLUP);
