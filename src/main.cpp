@@ -5,10 +5,15 @@
   Contact:  waps61 @gmail.com
   URL:      https://www.hackster.io/waps61
   TARGET:   ESP32
-  VERSION:  1.1
-  Date:     21-10-2020
+  VERSION:  1.2
+  Date:     03-11-2020
   Last
-  Update:   21-10-2020
+  Update:   03-11-2020
+            Modifications made to get it working with the NX8048P070-011R display.
+            Component updates are send through their setXXX function which implements
+            the recvRetCommandFinished() function. When sendCommand() is used, it needs
+            to be succeeded with the recvRetCommandFinished() command
+            21-10-2020
             Implemented a serial protocol to overcome the limitations of the
             32 bit register holding the paramaters to display wih a string based data set
             11-10-2020
@@ -89,7 +94,6 @@
 #include <HardwareSerial.h>
 //*** Include the Nextion Display files here
 
-
 //*** Since the ESP32 has only one(out of 3) Rx/Tx port free we need SoftwareSerial to
 //*** setup the serial communciation with the NMEA0183 network
 #include <SoftwareSerial.h>
@@ -99,31 +103,33 @@
 
 //For testing  and development purposes only outcomment to disable
 //#define WRITE_ENABLED 1
-#define VERSION "1.1"
+#define VERSION "1.2"
 #define NEXTION_ATTACHED 1 //out comment if no display available
 
 #define NMEA_BAUD 4800      //baudrate for NMEA communciation
 #define NMEA_BUFFER_SIZE 83 // According NEA0183 specs the max char is 82 + '\0'
 #define NMEA_RX 22
 #define NMEA_TX 23
-#define NEXTION_RX (int8_t) 16
-#define NEXTION_TX (int8_t) 17
-
+#define NEXTION_RX (int8_t)16
+#define NEXTION_TX (int8_t)17
+#define NEXTION_RCV_DELAY 100
+#define NEXTION_SND_DELAY 50
 
 #define RED 63488  //Nextion color
 #define GREEN 2016 //Nextion color
 
 //*** define the oject tags of the Nextion display
 #define WINDDISPLAY_STATUS "status"
-#define WINDDISPLAY_STATUS_VALUE "status.val"
+#define WINDDISPLAY_STATUS_VALUE "winddisplay.status.val"
+#define WINDDISPLAY_NMEA "nmea"
 #define FIELD_BUFFER 15 //nr of char used for displaying info on Nextion
 
-#define FTM 0.3048  //conversion from feet to meter
-
+#define FTM 0.3048 //conversion from feet to meter
 
 //*** Global scope variable declaration goes here
-NexPicture dispStatus = NexPicture(0, 16, WINDDISPLAY_STATUS);
-
+NexPicture dispStatus = NexPicture(1, 35, WINDDISPLAY_STATUS);
+NexText nmeaTxt = NexText(1, 16, WINDDISPLAY_NMEA);
+NexText versionTxt = NexText(0,3,"version");
 SoftwareSerial nmeaSerial;
 
 char _AWA[FIELD_BUFFER] = {0};
@@ -133,7 +139,7 @@ char _AWS[FIELD_BUFFER] = {0};
 char _BAT[FIELD_BUFFER] = {0};
 char _DPT[FIELD_BUFFER] = {0};
 char _DIR[FIELD_BUFFER] = {0};
-char oldVal[255] = {0};  // holds previos _BITVALUE to check if we need to send
+char oldVal[255] = {0}; // holds previos _BITVALUE to check if we need to send
 
 enum nextionStatus
 {
@@ -159,18 +165,20 @@ unsigned long tmr1 = 0;
 
 /*** function check if a string is a number
 */
-boolean isNumeric( char *value)
+boolean isNumeric(char *value)
 {
   boolean result = true;
   int i = 0;
-  while (value[i] != '\0' && result && i<FIELD_BUFFER){
-      result= (isDigit( value[i] ) || value[i]=='.' || value[i]=='-');
-      i++;
+  while (value[i] != '\0' && result && i < FIELD_BUFFER)
+  {
+    result = (isDigit(value[i]) || value[i] == '.' || value[i] == '-');
+    i++;
   }
   return result;
 }
 
-/* Display wind data onto the nextion HMI
+/* For backwards informational purpose only!!
+    Display wind data onto the nextion HMI
    the 4 parameters aws,sog,awa and cog are encode in a 32bit value
    aws bit 0-5 meaning max value of 63 kts (will you blow of the planet)
    sog bit 6-11 meaning max value of 63 kts (would be world record)
@@ -193,7 +201,7 @@ boolean isNumeric( char *value)
  */
 
 /*** Converts and adjusts the incomming values to usable values for the HMI display 
- * and concatenates thes values in one string so it can be send in one command to the 
+ * and concatenates these values in one string so it can be send in one command to the 
  * Nextion HMI in timed intervals of 50ms.
  * This is due the fact that a timer in the HMI checks on new data and refreshes the 
  * display. So no need to send more data than you can chew!
@@ -201,7 +209,7 @@ boolean isNumeric( char *value)
  * The string is formatted like:
  * <Sentence ID1>=<Value1>#....<Sentence IDn>=<Value_n>#
  * Sentence ID = 3 chars i.e. SOG, COG etc
- * Value can be an integer or float with 1 decimal and max 5 char long incl. delimter
+ * Value can be an integer or float with 1 decimal and max 5 char long incl. delimiter
  * i.e. SOG=6.4#COG=213.2#BAT=12.5#AWA=37#AWS=15.7#
  * The order is not applicable, so can be random
  */
@@ -209,71 +217,82 @@ void displayData()
 {
   char _BITVAL[255] = {0};
 
-  // if cog is a number 
-  if( isNumeric(_COG)){
-    strcat(_BITVAL,"COG=");
-    strcat(_BITVAL,_COG);
-    strcat(_BITVAL,"#");
-    
-  } 
-   
+  // if cog is a number
+  if (isNumeric(_COG))
+  {
+    strcat(_BITVAL, "COG=");
+    strcat(_BITVAL, _COG);
+    strcat(_BITVAL, "#");
+  }
+
   //set awa if is a number
-  if( isNumeric(_AWA)){
-    strcat(_BITVAL,"AWA=");
-    strcat(_BITVAL,_AWA);
-    strcat(_BITVAL,"#");
-  } 
-  
+  if (isNumeric(_AWA))
+  {
+    strcat(_BITVAL, "AWA=");
+    strcat(_BITVAL, _AWA);
+    strcat(_BITVAL, "#");
+  }
 
   //set sog if is a number
-  if( isNumeric(_SOG)){
-    strcat(_BITVAL,"SOG=");
-    strcat(_BITVAL,_SOG);
-    strcat(_BITVAL,"#");
-  } 
+  if (isNumeric(_SOG))
+  {
+    strcat(_BITVAL, "SOG=");
+    strcat(_BITVAL, _SOG);
+    strcat(_BITVAL, "#");
+  }
 
   // set aws is is a number
-  if(isNumeric(_AWS)){
-    strcat(_BITVAL,"AWS=");
-    strcat(_BITVAL,_AWS);
-    strcat(_BITVAL,"#");
-  } 
-  
+  if (isNumeric(_AWS))
+  {
+    strcat(_BITVAL, "AWS=");
+    strcat(_BITVAL, _AWS);
+    strcat(_BITVAL, "#");
+  }
+
   // set BATT is is a number
-  if(isNumeric(_BAT)){
-    strcat(_BITVAL,"BAT=");
-    strcat(_BITVAL,_BAT);
-    strcat(_BITVAL,"#");
-  } 
+  if (isNumeric(_BAT))
+  {
+    strcat(_BITVAL, "BAT=");
+    strcat(_BITVAL, _BAT);
+    strcat(_BITVAL, "#");
+  }
   // set dpt is is a number
-  if(isNumeric(_DPT)){
-    strcat(_BITVAL,"DPT=");
-    strcat(_BITVAL,_DPT);
-    strcat(_BITVAL,"#");
-  } 
+  if (isNumeric(_DPT))
+  {
+    strcat(_BITVAL, "DPT=");
+    strcat(_BITVAL, _DPT);
+    strcat(_BITVAL, "#");
+  }
   //*** Nextion display timer max speed is 50ms
   // so no need to send faster than 50ms otherwise
   // flooding the serialbuffer
-  if (millis() - tmr1 > 50)
+  if (millis() - tmr1 > NEXTION_SND_DELAY)
   {
     tmr1 = millis();
-    #ifdef NEXTION_ATTACHED
-    if ( strcmp(oldVal,_BITVAL) != 0 )
-    {
-      strcpy( oldVal, _BITVAL);
-      sendCommand("code_c");     // clear the previous databuffer if present
-      recvRetCommandFinished(5); // always wait for a reply from the HMI!
+#ifdef NEXTION_ATTACHED
 
-      nexSerial.print("winddisplay.nmea.txt=");
+    if (strcmp(oldVal, _BITVAL) != 0)
+    {
+      /*
+      dbSerial.print("Preparing NMEA data: clearing buffer:");
+      sendCommand("code_c");                     // clear the previous databuffer if present
+      recvRetCommandFinished(NEXTION_RCV_DELAY); // always wait for a reply from the HMI!
+*/
+      strcpy(oldVal, _BITVAL);
+
+      /*nexSerial.print("winddisplay.nmea.txt=");
       nexSerial.print(_BITVAL);
       nexSerial.write(0xFF);
       nexSerial.write(0xFF);
       nexSerial.write(0xFF);
-      recvRetCommandFinished(5);
+      */
+      dbSerial.print("Sending NMEA data: ");
+      nmeaTxt.setText(_BITVAL);
+      dbSerial.println(_BITVAL);
     }
-    
-    #endif
-    Serial.println(_BITVAL);
+
+#endif
+
     newData = false;
   }
 }
@@ -285,9 +304,9 @@ void displayData()
 */
 void hmiCommtest(uint16_t t0)
 {
-  /*
+  dbSerial.print("HMI comm test:");
   int dir = 0;
-  for (int i = t0; i < 360; i += 90)
+  for (int i = t0; i <= 360; i += 90)
   {
     if (i <= 180)
     {
@@ -302,9 +321,12 @@ void hmiCommtest(uint16_t t0)
     displayData();
     delay(250);
   }
-
+  /* dbSerial.print("Clearing databuffer:");
+  sendCommand("code_c");                     // clear the previous databuffer if present
+  recvRetCommandFinished(NEXTION_RCV_DELAY);
   */
-  //dispStatus.setPic(HMI_READY);
+  dbSerial.print(" Setting HMI to OK:");
+  dispStatus.setPic(HMI_READY);
 }
 #endif
 
@@ -387,8 +409,8 @@ void recvNMEAData()
 */
 void processNMEAData()
 {
-  
-  String sentence="";
+
+  String sentence = "";
   if (newData == true)
   {
 
@@ -402,10 +424,13 @@ void processNMEAData()
     cp = 0;
 
     if (sentence.indexOf("MWV", 0) > 0 ||
-        sentence.indexOf("RMC",0) > 0 ||
-        sentence.indexOf("DBK",0) > 0 ||
-        sentence.indexOf("TOB",0) > 0 ||
-        sentence.indexOf("VWR",0) > 0)
+        sentence.indexOf("RMC", 0) > 0 ||
+        sentence.indexOf("DBK", 0) > 0 ||
+        sentence.indexOf("TOB", 0) > 0 ||
+        sentence.indexOf("VWR", 0) > 0 ||
+        sentence.indexOf("BAT", 0) > 0 ||
+        sentence.indexOf("DBT", 0) > 0 ||
+        sentence.indexOf("DPT", 0) > 0)
     {
       field = 0; //ignore sentence tag
       while (li < sentence.length() && li < numChars)
@@ -453,19 +478,45 @@ void processNMEAData()
             memcpy(_COG, cvalue, FIELD_BUFFER - 1);
           }
         }
-        if(sentence.indexOf("DBK") > 0){
-          if(field==1){
-            memcpy(_DPT,cvalue,FIELD_BUFFER -1);
+        if (sentence.indexOf("DBK") > 0)
+        {
+          if (field == 1)
+          {
+            memcpy(_DPT, cvalue, FIELD_BUFFER - 1);
           }
-          if( field==2 && cvalue[0]=='f'){
-            double dpt= atof(_DPT);
+          if (field == 2 && cvalue[0] == 'f')
+          {
+            double dpt = atof(_DPT);
             dpt *= FTM;
-            sprintf(_DPT,"%.1f",dpt);
+            sprintf(_DPT, "%.1f", dpt);
           }
         }
-        if(sentence.indexOf("TOB") > 0){
-          if(field==1){
-            memcpy(_BAT,cvalue,FIELD_BUFFER-1);
+        else if (sentence.indexOf("DBT") > 0)
+        {
+          if (field == 3)
+          {
+            memcpy(_DPT, cvalue, FIELD_BUFFER - 1);
+          }
+        }
+        else if (sentence.indexOf("DPT") > 0)
+        {
+          if (field == 1)
+          {
+            memcpy(_DPT, cvalue, FIELD_BUFFER - 1);
+          }
+        }
+        if (sentence.indexOf("TOB") > 0)
+        {
+          if (field == 1)
+          {
+            memcpy(_BAT, cvalue, FIELD_BUFFER - 1);
+          }
+        }
+        else if (sentence.indexOf("BAT") > 0)
+        {
+          if (field == 2)
+          {
+            memcpy(_BAT, cvalue, FIELD_BUFFER - 1);
           }
         }
         ci = li;
@@ -499,42 +550,59 @@ void setup()
 #ifdef WRITE_ENABLED
   pinMode(9, OUTPUT);
 #endif
-  
-#ifdef NEXTION_ATTACHED
-  nexInit();
-  //sendCommand("splashscreen.version.txt="+VERSION);
-  delay(1500);
-  sendCommand("page 1");
-  recvRetCommandFinished(100);
-  uint32_t displayReady = SELFTEST;
-  
 
-  // wait until the display status is OK
-  while (displayReady != HMI_OK)
+#ifdef NEXTION_ATTACHED
+  if (nexInit())
   {
+    dbSerial.println("Initialisation succesful....");
+  }
+  else
+  {
+    dbSerial.println("Initialisation failed...");
+    dbSerial.println("Resetting Nextion...");
+    sendCommand("rest");
+    delay(3000);
+  }
+
+  delay(150);
+  dbSerial.print(" Writing version to splash: ");
+  versionTxt.setText(VERSION);
+  delay(5000);
+  dbSerial.print("Switcing to page 1: ");
+  sendCommand("page 1");
+  recvRetCommandFinished(NEXTION_RCV_DELAY);
+
+  uint32_t displayReady = SELFTEST;
+  delay(2500);
+  // wait until the display status is OK
+  dbSerial.print("Getting HMI status:");
+  while (displayReady < HMI_OK)
+  {
+    dbSerial.print(".");
     dispStatus.getPic(&displayReady);
+
     delay(100);
   }
   hmiCommtest(45);
   // restet the HMI o default 0 values
-  memcpy(_AWA, "0", 2);
-  memcpy(_COG, "0", 2);
-  memcpy(_SOG, "0", 2);
-  memcpy(_AWS, "0", 2);
-  memcpy(_DPT, "0",2);
-  memcpy(_BAT,"0",2);
+  memcpy(_AWA, "10", 2);
+  memcpy(_COG, "11", 2);
+  memcpy(_SOG, "9", 2);
+  memcpy(_AWS, "12", 2);
+  memcpy(_DPT, "5", 2);
+  memcpy(_BAT, "12", 2);
   displayData();
 #endif
   //pinMode(10, INPUT_PULLUP);
-  
-  nmeaSerial.begin(NMEA_BAUD,SWSERIAL_8N1,NMEA_RX, NMEA_TX, true); 
-  
+
+  nmeaSerial.begin(NMEA_BAUD, SWSERIAL_8N1, NMEA_RX, NMEA_TX, true);
 }
 
 void loop()
 {
   recvNMEAData();
-  if( newData ){
+  if (newData)
+  {
     processNMEAData();
     displayData();
   }
