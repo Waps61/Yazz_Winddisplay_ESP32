@@ -5,10 +5,13 @@
   Contact:  waps61 @gmail.com
   URL:      https://www.hackster.io/waps61
   TARGET:   ESP32
-  VERSION:  1.2
-  Date:     03-11-2020
+  VERSION:  1.21
+  Date:     04-11-2020
   Last
-  Update:   03-11-2020
+  Update:   04-11-2020
+            HMI now shows max SOG during trip. So prevent a false start due to sending fake 
+            data to the HMI in hmiCommtest(). It now only sets the status LED to HMI_READY
+            03-11-2020
             Modifications made to get it working with the NX8048P070-011R display.
             Component updates are send through their setXXX function which implements
             the recvRetCommandFinished() function. When sendCommand() is used, it needs
@@ -103,7 +106,7 @@
 
 //For testing  and development purposes only outcomment to disable
 //#define WRITE_ENABLED 1
-#define VERSION "1.2"
+#define VERSION "1.21"
 #define NEXTION_ATTACHED 1 //out comment if no display available
 
 #define NMEA_BAUD 4800      //baudrate for NMEA communciation
@@ -304,23 +307,7 @@ void displayData()
 */
 void hmiCommtest(uint16_t t0)
 {
-  dbSerial.print("HMI comm test:");
-  int dir = 0;
-  for (int i = t0; i <= 360; i += 90)
-  {
-    if (i <= 180)
-    {
-      dir = i;
-    }
-    else
-      dir = i - 360;
-    itoa(i, _COG, FIELD_BUFFER);
-    itoa(dir, _AWA, FIELD_BUFFER);
-    itoa(i / 3, _SOG, FIELD_BUFFER);
-    itoa(i / 3, _AWS, FIELD_BUFFER);
-    displayData();
-    delay(250);
-  }
+  
   /* dbSerial.print("Clearing databuffer:");
   sendCommand("code_c");                     // clear the previous databuffer if present
   recvRetCommandFinished(NEXTION_RCV_DELAY);
@@ -585,12 +572,12 @@ void setup()
   }
   hmiCommtest(45);
   // restet the HMI o default 0 values
-  memcpy(_AWA, "10", 2);
-  memcpy(_COG, "11", 2);
-  memcpy(_SOG, "9", 2);
-  memcpy(_AWS, "12", 2);
-  memcpy(_DPT, "5", 2);
-  memcpy(_BAT, "12", 2);
+  memcpy(_AWA, "--.-", 5);
+  memcpy(_COG, "---.-", 6);
+  memcpy(_SOG, "--.-", 5);
+  memcpy(_AWS, "--.-", 5);
+  memcpy(_DPT, "--.-", 5);
+  memcpy(_BAT, "--.-", 5);
   displayData();
 #endif
   //pinMode(10, INPUT_PULLUP);
