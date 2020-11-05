@@ -3,18 +3,31 @@ Project:  YAZZ_WindDisplay_ESP32, Copyright 2020, Roy Wassili
   Contact:  waps61 @gmail.com
   URL:      https://www.hackster.io/waps61
   TARGET:   ESP32
-  VERSION:  0.01
-  Date:     02-10-2020
+  VERSION:  1.21
+  Date:     04-11-2020
   Last
-  Update:   02-10-2020 V0.01
+  Update:   04-11-2020
+            HMI now shows max SOG during trip. So prevent a false start due to sending fake 
+            data to the HMI in hmiCommtest(). It now only sets the status LED to HMI_READY
+            03-11-2020
+            Modifications made to get it working with the NX8048P070-011R display.
+            Component updates are send through their setXXX function which implements
+            the recvRetCommandFinished() function. When sendCommand() is used, it needs
+            to be succeeded with the recvRetCommandFinished() command
+            21-10-2020
+            Implemented a serial protocol to overcome the limitations of the
+            32 bit register holding the paramaters to display wih a string based data set
+            11-10-2020
+            Tested on board and ok. This V1.0 as the master release
+            02-10-2020 V0.01
             Port from Atmega328 to ESP from version 1.13
             
-  Achieved: 03-10-2020 Runnable version on ESP32 with Nextion HMI         
+  Achieved: 11-10-2020 Succesful SAT  with Runnable version on ESP32 with Nextion HMI         
   Purpose:  Build an NMEA0183 wind display to replace the old Robertsen wind displays
             supporting following types of tasks:
             - Reading NMEA0183 v2.x data without,
             - Parse the for wind and course and send datat to display
-            - Overcome the limitations of the Arduino Nanpo V3, which stalls after ± 15 mintes
+            - 
   
   NOTES:    
         1)  NMEA encoding conventions in short
@@ -34,7 +47,7 @@ Project:  YAZZ_WindDisplay_ESP32, Copyright 2020, Roy Wassili
             SoftSerial on 4800 Bd
   
   Hardware setup:
-  The ESP32 has 3 Rx/Tx ports and has to be set to Serial2 
+  The ESP32 has 3 Rx/Tx portsand has to be set to Serial2 
   
   Wiring Diagram (for NMEA0183 to NMEA0183 device):
   ESP32      | NMEA device
@@ -68,11 +81,12 @@ Project:  YAZZ_WindDisplay_ESP32, Copyright 2020, Roy Wassili
   Do NOT use this compass in situations involving safety to life
   such as navigation at sea.  
         
-  TO DO:    Implement 2-way communication so that incomming NMEA data can be relayed
+  TO DO:    - Connect HMI to 5V from the Buck converter i.s.o. 3.3V pin on ESP32
+            -Implement 2-way communication so that incomming NMEA data can be relayed
             to other devices. An NMEA0183 network is typically a daisy chained network
 
   LIMITATIONS: 
-            No relay of NMEA0183 data possible currently. So display needs to be
-            implemented as the last node in the daisy chain.
+            As per the Arduino Nano V1.13;No relay of NMEA0183 data possible currently. 
+            So display needs to be implemented as the last node in the daisy chain.
  
-  Credit:
+  Credit:   
