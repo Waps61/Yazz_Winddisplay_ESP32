@@ -276,8 +276,8 @@ void displayData()
   sog = atof(_SOG);
   awa = atof(_AWA);
   aws = atof(_AWS);
-  tws= sqrt( sog*sog + aws*aws -(2*sog*aws*cos((double)awa/180)));
-  sprintf(_TWS,".1%f" ,tws);
+  tws= sqrt( sog*sog + aws*aws -(2*sog*aws*cos((double)awa*PI/180)));
+  sprintf(_TWS,"%.1f" ,tws);
   strcat(_BITVAL,"TWS=");
   strcat(_BITVAL,_TWS);
   strcat(_BITVAL,"#");
