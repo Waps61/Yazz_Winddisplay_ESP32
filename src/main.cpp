@@ -5,10 +5,13 @@
   Contact:  waps61 @gmail.com
   URL:      https://www.hackster.io/waps61
   TARGET:   ESP32
-  VERSION:  1.21
-  Date:     04-11-2020
+  VERSION:  1.3
+  Date:     08-11-2020
   Last
-  Update:   04-11-2020
+  Update:   08-11-2020
+            Added TWS calculation as defined in Starpath Truewind by DAvid Burch, 2000
+            TWS is calculated from AWA and SOG
+            04-11-2020
             HMI now shows max SOG during trip. So prevent a false start due to sending fake 
             data to the HMI in hmiCommtest(). It now only sets the status LED to HMI_READY
             03-11-2020
@@ -106,7 +109,7 @@
 
 //For testing  and development purposes only outcomment to disable
 //#define WRITE_ENABLED 1
-#define VERSION "1.21"
+#define VERSION "1.3"
 #define NEXTION_ATTACHED 1 //out comment if no display available
 
 #define NMEA_BAUD 4800      //baudrate for NMEA communciation
@@ -142,6 +145,7 @@ char _AWS[FIELD_BUFFER] = {0};
 char _BAT[FIELD_BUFFER] = {0};
 char _DPT[FIELD_BUFFER] = {0};
 char _DIR[FIELD_BUFFER] = {0};
+char _TWS[FIELD_BUFFER] = {0};
 char oldVal[255] = {0}; // holds previos _BITVALUE to check if we need to send
 
 enum nextionStatus
@@ -266,6 +270,17 @@ void displayData()
     strcat(_BITVAL, _DPT);
     strcat(_BITVAL, "#");
   }
+  // Calculate TWS from AWA and SOG as described Starpath TrueWind by, David Burch, 2000
+  // TWS= SQRT( SOG^2*AWS^2 + (2*SOG*AWA*COS(AWA/180)))
+  double sog, awa, aws, tws = 0.0;
+  sog = atof(_SOG);
+  awa = atof(_AWA);
+  aws = atof(_AWS);
+  tws= sqrt( sog*sog + aws*aws -(2*sog*aws*cos((double)awa/180)));
+  sprintf(_TWS,".1%f" ,tws);
+  strcat(_BITVAL,"TWS=");
+  strcat(_BITVAL,_TWS);
+  strcat(_BITVAL,"#");
   //*** Nextion display timer max speed is 50ms
   // so no need to send faster than 50ms otherwise
   // flooding the serialbuffer
