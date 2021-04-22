@@ -5,10 +5,12 @@
   Contact:  waps61 @gmail.com
   URL:      https://www.hackster.io/waps61
   TARGET:   ESP32
-  VERSION:  1.3
-  Date:     08-11-2020
+  VERSION:  1.35
+  Date:     22-04-2021
   Last
-  Update:   08-11-2020
+  Update:   22-04-2021
+            Fixed a bug in the depth calculation incase a DBK message is read
+            08-11-2020
             Added TWS calculation as defined in Starpath Truewind by DAvid Burch, 2000
             TWS is calculated from AWA and SOG
             04-11-2020
@@ -109,7 +111,7 @@
 
 //For testing  and development purposes only outcomment to disable
 //#define WRITE_ENABLED 1
-#define VERSION "1.3"
+#define VERSION "1.35"
 #define NEXTION_ATTACHED 1 //out comment if no display available
 
 #define NMEA_BAUD 4800      //baudrate for NMEA communciation
@@ -482,11 +484,11 @@ void processNMEAData()
         }
         if (sentence.indexOf("DBK") > 0)
         {
-          if (field == 1)
+          if (field == 2)
           {
             memcpy(_DPT, cvalue, FIELD_BUFFER - 1);
           }
-          if (field == 2 && cvalue[0] == 'f')
+          if (field == 3 && cvalue[0] == 'f')
           {
             double dpt = atof(_DPT);
             dpt *= FTM;
