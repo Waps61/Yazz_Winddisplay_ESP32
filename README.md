@@ -1,12 +1,16 @@
-# Yazz_WindDisplay_ESP32
-Project:  YAZZ_WindDisplay_ESP32, Copyright 2020, Roy Wassili
+  Project:  YAZZ_WindDisplay_ESP32, Copyright 2020, Roy Wassili
   Contact:  waps61 @gmail.com
   URL:      https://www.hackster.io/waps61
   TARGET:   ESP32
-  VERSION:  1.21
-  Date:     04-11-2020
+  VERSION:  1.35
+  Date:     22-04-2021
   Last
-  Update:   04-11-2020
+  Update:   22-04-2021
+            Fixed a bug in the depth calculation incase a DBK message is read
+            08-11-2020
+            Added TWS calculation as defined in Starpath Truewind by DAvid Burch, 2000
+            TWS is calculated from AWA and SOG
+            04-11-2020
             HMI now shows max SOG during trip. So prevent a false start due to sending fake 
             data to the HMI in hmiCommtest(). It now only sets the status LED to HMI_READY
             03-11-2020
@@ -89,4 +93,4 @@ Project:  YAZZ_WindDisplay_ESP32, Copyright 2020, Roy Wassili
             As per the Arduino Nano V1.13;No relay of NMEA0183 data possible currently. 
             So display needs to be implemented as the last node in the daisy chain.
  
-  Credit:   
+  Credit: 
