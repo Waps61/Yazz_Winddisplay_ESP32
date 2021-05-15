@@ -186,28 +186,6 @@ boolean isNumeric(char *value)
   return result;
 }
 
-/* For backwards informational purpose only!!
-    Display wind data onto the nextion HMI
-   the 4 parameters aws,sog,awa and cog are encode in a 32bit value
-   aws bit 0-5 meaning max value of 63 kts (will you blow of the planet)
-   sog bit 6-11 meaning max value of 63 kts (would be world record)
-   awa bit 12-20 meaning max value of 512 degrees, only need 360 though
-   cog bit 21-29 meanig max valie of 512 degrees, only need 360 though
-   2 most significant bits (30-31) are reserved and currently not used
-   we shift << the bits from cog,awa,sog and aws respectively so all bits are in place
-
-   The wind angle is typically represented between 0 - 180 degrees Port(-) or Starboard(+) 
-   and indicated by a color red(Port) or green(Starboard) and/or in indicator >,<,R,L 
-   while the gauge can only display degrees between 0 - 360. The starting point for the
-   gauge is at -90 degrees from the normal compass position, so we need to add 90 degrees
-   for zero!
-   I receive NMEA values either between -179 and +180 degrees where the minus sign indicates 
-   the wind coming from Port, depending on your windset.
-   Either way we have to convert this to a value between 0-360 where the code in the HMI
-   takes care of the wind incdicator; 
-   HMI values 0 - 180 = Startboard
-   HMI values 181 - 360 = Port
- */
 
 /*** Converts and adjusts the incomming values to usable values for the HMI display 
  * and concatenates these values in one string so it can be send in one command to the 
@@ -293,19 +271,10 @@ void displayData()
 
     if (strcmp(oldVal, _BITVAL) != 0)
     {
-      /*
-      dbSerial.print("Preparing NMEA data: clearing buffer:");
-      sendCommand("code_c");                     // clear the previous databuffer if present
-      recvRetCommandFinished(NEXTION_RCV_DELAY); // always wait for a reply from the HMI!
-*/
+      
       strcpy(oldVal, _BITVAL);
 
-      /*nexSerial.print("winddisplay.nmea.txt=");
-      nexSerial.print(_BITVAL);
-      nexSerial.write(0xFF);
-      nexSerial.write(0xFF);
-      nexSerial.write(0xFF);
-      */
+  
       dbSerial.print("Sending NMEA data: ");
       nmeaTxt.setText(_BITVAL);
       dbSerial.println(_BITVAL);
@@ -325,45 +294,13 @@ void displayData()
 void hmiCommtest(uint16_t t0)
 {
   
-  /* dbSerial.print("Clearing databuffer:");
-  sendCommand("code_c");                     // clear the previous databuffer if present
-  recvRetCommandFinished(NEXTION_RCV_DELAY);
-  */
+  
   dbSerial.print(" Setting HMI to OK:");
   dispStatus.setPic(HMI_READY);
 }
 #endif
 
-#ifdef WRITE_ENABLED
-/** actualy writes nmea data to digital pin 9 as a additional serial port while
- * inverting the data from TTL-level to RS-232 level
- * 
- * TO DO: find the correct dely time for correct data transmission; still
- * missing the first 3-4 characters
- * */
-void nmeaOut(char data)
-{
-  byte mask;
-  //startbit
-  digitalWrite(9, HIGH);
-  delayMicroseconds(200);
-  for (mask = 0x01; mask > 0; mask <<= 1)
-  {
-    if (data & mask)
-    {                       // choose bit
-      digitalWrite(9, LOW); // send 1
-    }
-    else
-    {
-      digitalWrite(9, HIGH); // send 0
-    }
-    delayMicroseconds(200);
-  }
-  //stop bit
-  digitalWrite(9, LOW);
-  delayMicroseconds(200);
-}
-#endif
+
 
 /** reads the softseroal port pin 10 and ckeks for valid nmea data starting with
  * character '$' only (~ and ! can be skipped as start charcter)
@@ -532,19 +469,7 @@ void processNMEAData()
   }
 }
 
-#ifdef WRITE_ENABLED
-// writes nmea data over digital pin as an additional serial port
-void relayData()
-{
-  uint16_t i = 0;
-  while (receivedChars[i] != '0')
-  {
-    nmeaOut(receivedChars[i]);
 
-    i++;
-  }
-}
-#endif
 
 void setup()
 {
